@@ -182,7 +182,7 @@
       domains: ['youtube.com', 'youtu.be'],
       color: '#f87171',
       freeWithAds: true,
-      searchUrl: t => `https://www.youtube.com/results?search_query=${encodeURIComponent(t + ' full documentary')}`
+      searchUrl: t => `https://www.youtube.com/results?search_query=${encodeURIComponent(t + ' full documentary')}&sp=EgQQARgC`
     }
   ];
 
@@ -816,6 +816,63 @@
     }
   }
 
+  // Merge Official Free Long-Form YouTube Documentary Channels (youtube-catalog.js)
+  if (Array.isArray(global.DOCFINDER_YOUTUBE_CATALOG)) {
+    const byNormTitle = new Map(
+      CANONICAL_DOC_LIST.map(m => [String(m.title?.english || '').toLowerCase().replace(/[^a-z0-9]/g, ''), m])
+    );
+    for (const row of global.DOCFINDER_YOUTUBE_CATALOG) {
+      if (!row || !row.title || !row.videoId) continue;
+      const normKey = String(row.title).toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (byNormTitle.has(normKey)) continue;
+      const id = allocateUniqueId(row.id || 600001);
+      const plats = row.isPbs ? ['youtube', 'pbs'] : ['youtube'];
+      const node = {
+        id,
+        idMal: id,
+        imdbId: '',
+        imdbRating: null,
+        imdbVotes: null,
+        _needsPosterHydration: false,
+        _youtubeVideoId: row.videoId,
+        countryOfOrigin: 'US',
+        source: 'YOUTUBE_DOC',
+        docStyle: row.style || 'Investigative',
+        title: { english: row.title, romaji: row.title, native: row.channel || 'YouTube Documentary' },
+        coverImage: { large: row.poster, medium: row.poster, color: '#f87171' },
+        format: 'FEATURE_DOC',
+        status: 'FINISHED',
+        episodes: 1,
+        duration: 50,
+        season: 'YOUTUBE',
+        seasonYear: row.year || 2025,
+        averageScore: 83,
+        meanScore: 83,
+        popularity: 24000,
+        favourites: 2000,
+        genres: [row.genre || 'Society & Politics'],
+        isAdult: false,
+        description: row.plot || `Full-length documentary from ${row.channel} on YouTube.`,
+        trailer: { id: row.videoId, site: 'youtube', thumbnail: row.poster },
+        studios: { nodes: [{ id: id + 1, name: row.channel || 'YouTube Documentary' }] },
+        tags: [
+          { name: row.style === 'Archival' ? 'Archival Footage' : row.style === 'Investigative' ? 'Investigative Journalism' : 'Cinema Verité', rank: 90 }
+        ],
+        externalLinks: [
+          { site: 'YouTube', platformId: 'youtube', url: row.url, isDirect: true, type: 'STREAMING' }
+        ],
+        _verifiedStreaming: true,
+        _matchedPlatforms: plats,
+        nextAiringEpisode: null,
+        relations: { edges: [] },
+        characters: { edges: [] },
+        staff: { edges: [] }
+      };
+      CANONICAL_DOC_LIST.push(node);
+      byNormTitle.set(normKey, node);
+    }
+  }
+
   const CANONICAL_BY_ID = new Map(CANONICAL_DOC_LIST.map(m => [m.id, m]));
 
   // --------------------------------------------------------------------------
@@ -1132,6 +1189,7 @@
       settings: {
         tmdbKey: '',
         omdbKey: '',
+        youtubeKey: '',
         gistToken: '',
         gistId: '',
         gistFilename: GIST_FILENAME,
@@ -1225,6 +1283,7 @@
       gistAutoSync: raw.settings?.gistAutoSync !== undefined ? Boolean(raw.settings.gistAutoSync) : true,
       tmdbKey: raw.settings?.tmdbKey ?? raw.tmdbKey ?? '',
       omdbKey: raw.settings?.omdbKey ?? '',
+      youtubeKey: raw.settings?.youtubeKey ?? '',
       lastGistSync: Number(raw.settings?.lastGistSync || 0),
       anilistUsername: raw.settings?.anilistUsername || '',
       streamingFilter: Array.isArray(raw.settings?.streamingFilter)
@@ -1996,6 +2055,7 @@
       CONCERT_FILM: 'Live Concert & Performance',
       EXPERIMENTAL_DOC: 'Visual Essay / Non-Narrative',
       ORAL_HISTORY: 'Firsthand Oral History',
+      YOUTUBE_DOC: 'Official YouTube Documentary',
       TVMAZE_LIVE: 'TVMaze Documentary Broadcast'
     };
     return map[source] || 'Documentary Non-Fiction';

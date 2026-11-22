@@ -212,6 +212,13 @@
                 <button type="button" class="btn btn-sm" id="saveOmdbKeyBtn">Save</button>
               </div>
             </form>
+            <form onsubmit="return false;" class="form-field">
+              <label for="youtubeKeyInput">Optional YouTube Data API v3 Key (Live &gt;20m Doc Search)</label>
+              <div style="display:flex;gap:8px;">
+                <input id="youtubeKeyInput" type="password" autocomplete="off" class="input input-full" placeholder="Free YouTube Data API v3 key (local only)">
+                <button type="button" class="btn btn-sm" id="saveYoutubeKeyBtn">Save</button>
+              </div>
+            </form>
           </div>
           <div class="divider"></div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
@@ -281,18 +288,26 @@
 
         <div class="panel">
           <div class="panel-header">
-            <h3 class="panel-title">YouTube Documentary Trailer Hunter</h3>
-            <a id="ytDirectLink" class="btn btn-xs btn-cyan" href="https://www.youtube.com/results?search_query=official+documentary+trailer" target="_blank" rel="noopener">Open on YouTube ↗</a>
+            <div>
+              <h3 class="panel-title">YouTube Long-Form Documentary Hunter (&gt;20 min)</h3>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">Searches 8 official free documentary channels (DW, FRONTLINE, NOVA, Free Documentary, Real Stories, Timeline, Spark, Absolute History) + optional live YouTube v3 API.</div>
+            </div>
+            <a id="ytDirectLink" class="btn btn-xs btn-cyan" href="https://www.youtube.com/results?search_query=full+documentary&amp;sp=EgQQARgC" target="_blank" rel="noopener">Open on YouTube (&gt;20m) ↗</a>
           </div>
-          <div style="display:flex;gap:8px;margin-bottom:10px;">
-            <input id="ytSearchInput" type="search" class="input input-full" value="official documentary trailer" placeholder="Search documentary trailers, nature films, science &amp; history docs...">
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap;">
+            <input id="ytSearchInput" type="search" class="input" style="flex:1;min-width:180px;" value="full documentary" placeholder="Search full-length YouTube docs (e.g. space, WWII, ocean, FRONTLINE)...">
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;white-space:nowrap;">
+              <input type="checkbox" id="ytLongOnlyCheck" checked> Long-Form Only (&gt;20m)
+            </label>
             <button type="button" class="btn btn-primary btn-sm" id="ytSearchBtn">Hunt</button>
           </div>
           <div class="pills-row" style="margin-bottom:12px;">
-            <button type="button" class="pill yt-preset" data-q="official documentary trailer">Official Trailers</button>
-            <button type="button" class="pill yt-preset" data-q="4k nature wildlife documentary full">Nature &amp; Wildlife</button>
-            <button type="button" class="pill yt-preset" data-q="space science cosmos documentary">Space &amp; Science</button>
-            <button type="button" class="pill yt-preset" data-q="sundance oscar documentary film trailer">Festival &amp; Oscar Docs</button>
+            <button type="button" class="pill yt-preset" data-q="full documentary">All Free Channels</button>
+            <button type="button" class="pill yt-preset" data-q="DW Documentary">DW Documentary</button>
+            <button type="button" class="pill yt-preset" data-q="FRONTLINE PBS">FRONTLINE PBS</button>
+            <button type="button" class="pill yt-preset" data-q="NOVA PBS">NOVA Science</button>
+            <button type="button" class="pill yt-preset" data-q="history ancient war">History &amp; War</button>
+            <button type="button" class="pill yt-preset" data-q="nature wildlife ocean">Nature &amp; Wildlife</button>
           </div>
           <div id="ytResultsList" style="display:flex;flex-direction:column;gap:10px;max-height:440px;overflow-y:auto;"></div>
         </div>
@@ -351,6 +366,7 @@
   <script src="./catalog-data.js"></script>
   <script src="./imdb-catalog.js"></script>
   <script src="./pbs-catalog.js"></script>
+  <script src="./youtube-catalog.js"></script>
   <script src="./streaming-links.js"></script>
   <script src="./shared-core.js"></script>
   <script>
@@ -918,6 +934,7 @@
         document.getElementById('gistAutoSyncCheck').checked = state.settings.gistAutoSync !== false;
         setVal('tmdbKeyInput', state.settings.tmdbKey || '');
         setVal('omdbKeyInput', state.settings.omdbKey || '');
+        setVal('youtubeKeyInput', state.settings.youtubeKey || '');
         setVal('anilistImportUser', state.settings.anilistUsername || 'starter');
 
         document.getElementById('wizStep1').classList.toggle('done', hasToken);
@@ -982,6 +999,7 @@
       document.getElementById('gistAutoSyncCheck').addEventListener('change', syncGistInputs);
       document.getElementById('tmdbKeyInput').addEventListener('change', () => AF.updateSettings({ tmdbKey: document.getElementById('tmdbKeyInput').value.trim() }));
       document.getElementById('omdbKeyInput').addEventListener('change', () => AF.updateSettings({ omdbKey: document.getElementById('omdbKeyInput').value.trim() }));
+      document.getElementById('youtubeKeyInput').addEventListener('change', () => AF.updateSettings({ youtubeKey: document.getElementById('youtubeKeyInput').value.trim() }));
       document.getElementById('anilistImportUser').addEventListener('change', () => AF.updateSettings({ anilistUsername: document.getElementById('anilistImportUser').value.trim() }));
       document.getElementById('saveGistConfigBtn').addEventListener('click', () => { syncGistInputs(); AF.toast('Saved GitHub Gist configuration.', 'success'); renderSavedTab(); });
       document.getElementById('disconnectGistBtn').addEventListener('click', () => { AF.gistDisconnect(); AF.toast('Disconnected Private Gist.', 'info'); renderSavedTab(); });
@@ -1006,6 +1024,7 @@
 
       document.getElementById('saveTmdbKeyBtn').addEventListener('click', () => { AF.updateSettings({ tmdbKey: document.getElementById('tmdbKeyInput').value.trim() }); AF.toast('Saved TMDB API key locally.', 'success'); });
       document.getElementById('saveOmdbKeyBtn').addEventListener('click', () => { AF.updateSettings({ omdbKey: document.getElementById('omdbKeyInput').value.trim() }); AF.toast('Saved OMDb API key locally.', 'success'); });
+      document.getElementById('saveYoutubeKeyBtn').addEventListener('click', () => { AF.updateSettings({ youtubeKey: document.getElementById('youtubeKeyInput').value.trim() }); AF.toast('Saved YouTube Data API v3 key locally (live >20m search enabled).', 'success'); });
       document.getElementById('clearApiCacheBtn').addEventListener('click', async () => { await AF.cacheClear(false); await refreshCacheStatsUI(); AF.toast('Cleared API cache.', 'info'); });
       document.getElementById('clearAllCacheBtn').addEventListener('click', async () => { await AF.cacheClear(true); await refreshCacheStatsUI(); AF.toast('Cleared API cache and MiniLM vector store.', 'warn'); });
       document.getElementById('genSyncCodeBtn').addEventListener('click', () => { document.getElementById('syncCodeOutput').value = AF.generateSyncCode(); AF.toast('Generated portable UTF-8 Sync Code.', 'success'); });
@@ -1105,33 +1124,82 @@
 
       async function huntYouTube(customQuery) {
         const input = document.getElementById('ytSearchInput');
-        const q = (customQuery ?? input.value).trim() || 'official documentary trailer';
+        const longOnly = document.getElementById('ytLongOnlyCheck')?.checked !== false;
+        const q = (customQuery ?? input.value).trim() || 'full documentary';
         input.value = q;
-        document.getElementById('ytDirectLink').href = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+        const spParam = longOnly ? '&sp=EgQQARgC' : '';
+        const ytLink = document.getElementById('ytDirectLink');
+        ytLink.href = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}${spParam}`;
+        ytLink.textContent = longOnly ? 'Open on YouTube (>20m) ↗' : 'Open on YouTube ↗';
 
         const host = document.getElementById('ytResultsList');
+        const ytKey = AF.getState().settings.youtubeKey;
         const collected = [];
         const seenUrls = new Set();
-        for (const m of AF.CANONICAL_DOC_LIST) {
-          if (m?.trailer?.site === 'youtube' && /^[a-zA-Z0-9_-]{11}$/.test(m.trailer.id)) {
-            const url = `https://www.youtube.com/watch?v=${m.trailer.id}`;
-            if (seenUrls.has(url)) continue;
-            seenUrls.add(url);
-            collected.push({
-              title: `${AF.getDisplayTitle(m)} — Official Documentary Trailer`,
-              uploader: `${m.studios?.nodes?.[0]?.name || 'Studio'} · ${m.seasonYear || ''}`.trim(),
-              thumb: m.trailer.thumbnail,
-              url,
-              duration: 'Official Trailer'
-            });
-          }
+
+        // 1. Optional live YouTube Data API v3 search (strictly videoDuration=long when longOnly is checked)
+        if (ytKey) {
+          host.innerHTML = `<div class="empty-state"><span class="spinner"></span> Querying YouTube Data API v3${longOnly ? ' (>20 min long-form)' : ''}...</div>`;
+          try {
+            const durParam = longOnly ? '&videoDuration=long' : '';
+            const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true${durParam}&maxResults=12&q=${encodeURIComponent(q + ' documentary')}&key=${encodeURIComponent(ytKey)}`);
+            if (res.ok) {
+              const json = await res.json();
+              for (const item of (json.items || [])) {
+                const vid = item.id?.videoId;
+                if (!vid) continue;
+                const url = `https://www.youtube.com/watch?v=${vid}`;
+                if (seenUrls.has(url)) continue;
+                seenUrls.add(url);
+                collected.push({
+                  title: AF.stripHtml(item.snippet?.title || 'YouTube Documentary'),
+                  uploader: item.snippet?.channelTitle || 'YouTube',
+                  thumb: item.snippet?.thumbnails?.medium?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+                  url,
+                  duration: longOnly ? 'Long-Form (>20m) · Live API' : 'YouTube Live API'
+                });
+              }
+            }
+          } catch {}
         }
-        host.innerHTML = collected.slice(0, 12).map(v => `
+
+        // 2. Built-in official free long-form YouTube documentary channels + trailers
+        const tokens = q.toLowerCase().split(/\s+/).filter(w => w.length >= 2 && !['full', 'documentary', 'doc', 'docs'].includes(w));
+        const ytDocs = AF.CANONICAL_DOC_LIST.filter(m => m.source === 'YOUTUBE_DOC');
+        const rankedYt = ytDocs.map(m => {
+          const hay = `${AF.getDisplayTitle(m)} ${m.description} ${(m.studios?.nodes || []).map(s => s.name).join(' ')} ${(m.genres || []).join(' ')}`.toLowerCase();
+          let score = 0;
+          for (const t of tokens) if (hay.includes(t)) score += 10;
+          return { m, score };
+        }).filter(x => !tokens.length || x.score > 0).sort((a, b) => b.score - a.score);
+
+        for (const { m } of rankedYt) {
+          const vid = m._youtubeVideoId || m.trailer?.id;
+          if (!vid) continue;
+          const url = `https://www.youtube.com/watch?v=${vid}`;
+          if (seenUrls.has(url)) continue;
+          seenUrls.add(url);
+          collected.push({
+            title: AF.getDisplayTitle(m),
+            uploader: `${m.studios?.nodes?.[0]?.name || 'YouTube'} · ${m.seasonYear || ''}`.trim(),
+            thumb: m.trailer?.thumbnail || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+            url,
+            duration: 'Free Full Doc (Official Channel)'
+          });
+          if (collected.length >= 20) break;
+        }
+
+        if (!collected.length) {
+          host.innerHTML = `<div class="empty-state">No cached channel matches for "${AF.escapeHtml(q)}". Click <strong>Open on YouTube (&gt;20m) ↗</strong> above to search all of YouTube filtered to videos over 20 minutes.</div>`;
+          return;
+        }
+
+        host.innerHTML = collected.slice(0, 16).map(v => `
           <a href="${AF.escapeHtml(AF.safeUrl(v.url, 'https://www.youtube.com'))}" target="_blank" rel="noopener noreferrer" style="display:flex;gap:10px;padding:8px;border-radius:10px;background:var(--bg-card);border:1px solid var(--border);text-decoration:none;align-items:center;">
             <img src="${AF.escapeHtml(AF.safeUrl(v.thumb, ''))}" alt="" style="width:96px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;">
             <div style="min-width:0;flex:1;">
               <div style="font-weight:700;font-size:12.5px;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${AF.escapeHtml(v.title)}</div>
-              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${AF.escapeHtml(v.uploader)} · ${AF.escapeHtml(v.duration)}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${AF.escapeHtml(v.uploader)} · <span style="color:var(--cyan);">${AF.escapeHtml(v.duration)}</span></div>
             </div>
           </a>
         `).join('');
@@ -1140,6 +1208,7 @@
       document.getElementById('refreshUpcomingBtn').addEventListener('click', loadUpcomingRadar);
       document.getElementById('refreshAnnBtn').addEventListener('click', () => loadAnnNews(true));
       document.getElementById('ytSearchBtn').addEventListener('click', () => huntYouTube());
+      document.getElementById('ytLongOnlyCheck').addEventListener('change', () => huntYouTube());
       document.getElementById('ytSearchInput').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') huntYouTube(); });
       document.querySelectorAll('.yt-preset').forEach(btn => btn.addEventListener('click', () => huntYouTube(btn.dataset.q)));
 
