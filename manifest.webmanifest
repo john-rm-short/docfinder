@@ -1,0 +1,17 @@
+{
+  "name": "DocFinder Web Suite",
+  "short_name": "DocFinder",
+  "description": "Three-page static documentary series and feature film discovery, tracking, similarity graph, and exploration suite.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#070b11",
+  "theme_color": "#070b11",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
