@@ -30,19 +30,19 @@ BATCH_SIZE = 150
 DELAY_SEC = 2.0
 
 ENTITY_TO_PLATFORM = [
-    (r"\bnetflix\b", "netflix"),
-    (r"\b(hbo|hbo max|max|hbo documentary)\b", "max"),
-    (r"\bhulu\b", "hulu"),
-    (r"\b(disney\+|disney plus|national geographic|nat geo)\b", "disney"),
-    (r"\b(pbs|public broadcasting|kanopy|wgbh|wnet|itvs)\b", "pbs"),
-    (r"\b(apple tv\+|apple tv|apple original)\b", "appletv"),
-    (r"\b(amazon prime|prime video|amazon studios|amazon mgm)\b", "prime"),
-    (r"\b(peacock|nbc|msnbc)\b", "peacock"),
-    (r"\b(paramount\+|paramount plus|showtime|cbs|smithsonian)\b", "paramount"),
-    (r"\b(curiositystream|curiosity stream|bbc|bbc two|bbc four|bbc one)\b", "curiosity"),
-    (r"\b(tubi|filmrise)\b", "tubi"),
-    (r"\b(pluto tv|a&e)\b", "pluto"),
-    (r"\byoutube\b", "youtube"),
+    (r"^netflix$", "netflix"),
+    (r"^(hbo|hbo max|max|hbo documentary films)$", "max"),
+    (r"^hulu$", "hulu"),
+    (r"^(disney\+|disney plus|national geographic|national geographic channel|nat geo wild)$", "disney"),
+    (r"^(pbs|public broadcasting service)$", "pbs"),
+    (r"^(apple tv\+|apple tv)$", "appletv"),
+    (r"^(amazon prime video|prime video|amazon studios)$", "prime"),
+    (r"^peacock$", "peacock"),
+    (r"^(paramount\+|paramount plus|showtime|smithsonian channel)$", "paramount"),
+    (r"^(curiositystream|curiosity stream)$", "curiosity"),
+    (r"^tubi$", "tubi"),
+    (r"^pluto tv$", "pluto"),
+    (r"^youtube$", "youtube"),
 ]
 
 
@@ -51,9 +51,9 @@ def norm_key(title: str) -> str:
 
 
 def match_platform(label: str):
-    low = (label or "").lower()
+    low = (label or "").strip().lower()
     for pat, pid in ENTITY_TO_PLATFORM:
-        if re.search(pat, low):
+        if re.match(pat, low):
             return pid
     return None
 
@@ -167,21 +167,22 @@ def main():
         existing_plats = set(d.get("platforms") or [])
         had_any = bool(existing_plats)
 
-        if info["netflixId"] and re.match(r"^\d+$", info["netflixId"]):
-            existing_plats.add("netflix")
+        # Strictly use P449 (original broadcaster) — NEVER P750 (international/historical distributors)
+        for label in info["broads"]:
+            pid = match_platform(label)
+            if pid:
+                existing_plats.add(pid)
+                if not d.get("network"):
+                    d["network"] = label
+
+        # Only attach direct Netflix /title/<id> URL if Netflix is the original broadcaster (Netflix Original)
+        if "netflix" in existing_plats and info["netflixId"] and re.match(r"^\d+$", info["netflixId"]):
             nk = norm_key(d["title"])
             if nk:
                 stream_links.setdefault(nk, {})
                 if "netflix" not in stream_links[nk]:
                     stream_links[nk]["netflix"] = f"https://www.netflix.com/title/{info['netflixId']}"
                     netflix_direct_added += 1
-
-        for label in info["dists"] + info["broads"]:
-            pid = match_platform(label)
-            if pid:
-                existing_plats.add(pid)
-                if not d.get("network"):
-                    d["network"] = label
 
         if existing_plats:
             d["platforms"] = sorted(existing_plats)

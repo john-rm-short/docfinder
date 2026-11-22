@@ -78,7 +78,6 @@ NET_TO_PLATFORM = {
     "tubi": "tubi",
     "pluto tv": "pluto",
     "youtube": "youtube",
-    "bbc": "curiosity",
 }
 
 IMDB_GENRE_MAP = {
