@@ -637,26 +637,41 @@
     };
   });
 
-  // Merge IMDb Documentary Dataset Index (imdb-catalog.js: Documentary Movies & Series ONLY)
+  const usedDocIds = new Set(CANONICAL_DOC_LIST.map(m => m.id));
+  function allocateUniqueId(preferred) {
+    let id = Number(preferred) || 100000;
+    while (usedDocIds.has(id)) id++;
+    usedDocIds.add(id);
+    return id;
+  }
+
+  // Merge IMDb + TVMaze Bulk Documentary Dataset Index (imdb-catalog.js)
   if (Array.isArray(global.DOCFINDER_IMDB_CATALOG)) {
     const byNormTitle = new Map(
       CANONICAL_DOC_LIST.map(m => [String(m.title?.english || '').toLowerCase().replace(/[^a-z0-9]/g, ''), m])
     );
     for (const row of global.DOCFINDER_IMDB_CATALOG) {
-      if (!row || !row.imdbId || !row.title) continue;
+      if (!row || !row.title) continue;
+      const rawImdbId = String(row.imdbId || '');
+      const realImdbId = /^tt\d+$/i.test(rawImdbId) ? rawImdbId : '';
       const normKey = String(row.title).toLowerCase().replace(/[^a-z0-9]/g, '');
       const existing = byNormTitle.get(normKey);
       if (existing) {
-        existing.imdbId = row.imdbId;
-        existing.imdbRating = row.imdbRating;
-        existing.imdbVotes = row.imdbVotes;
+        if (realImdbId) existing.imdbId = realImdbId;
+        if (row.imdbRating) existing.imdbRating = row.imdbRating;
+        if (row.imdbVotes) existing.imdbVotes = row.imdbVotes;
         if (row.rt) existing.rottenTomatoes = row.rt;
         if (row.rated) existing.mpaaRated = row.rated;
+        if (row.poster && String(existing.coverImage?.large || '').startsWith('data:image/svg+xml')) {
+          existing.coverImage = { large: row.poster, medium: row.poster, color: existing.coverImage?.color || '#0ea5e9' };
+          existing._needsPosterHydration = false;
+        }
         continue;
       }
       const isMini = row.type === 'tvMiniSeries';
       const isTv = row.type === 'tvSeries' || isMini;
-      const id = 3000000 + (parseInt(row.imdbId.replace(/\D/g, ''), 10) % 900000);
+      const numericSeed = parseInt(rawImdbId.replace(/\D/g, ''), 10) || (CANONICAL_DOC_LIST.length + 1);
+      const id = allocateUniqueId(3000000 + (numericSeed % 900000));
       const low = (row.title + ' ' + (row.plot || '')).toLowerCase();
       const docStyle = /investig|expos|fraud|murder|corrupt|scandal/.test(low)
         ? 'Investigative'
@@ -668,9 +683,9 @@
       if (/ocean|whale|penguin|nature|wildlife|gorilla|planet|earth/.test(low)) inferredTags.push({ name: 'Deep Ocean & Wildlife', rank: 92 });
       if (/space|cosmos|physics|cern|mars|moon|telescope|universe/.test(low)) inferredTags.push({ name: 'Space Exploration', rank: 92 });
       if (/war|wwii|holocaust|aleppo|syria|afghanistan|vietnam/.test(low)) inferredTags.push({ name: 'World War II', rank: 86 });
-      if (/music|band|concert|dylan|stones|punk|country|cuban/.test(low)) inferredTags.push({ name: 'Music History', rank: 92 });
+      if (/music|band|concert|dylan|stones|punk|country|cuban|jazz|rock/.test(low)) inferredTags.push({ name: 'Music History', rank: 92 });
       if (/climate|environment|polar|glacier|ice|forest|landfill/.test(low)) inferredTags.push({ name: 'Climate & Conservation', rank: 90 });
-      if (/food|sushi|fast food|agriculture/.test(low)) inferredTags.push({ name: 'Culinary & Travel', rank: 90 });
+      if (/food|sushi|fast food|agriculture|chef|culinary/.test(low)) inferredTags.push({ name: 'Culinary & Travel', rank: 90 });
       if (/investig|expos|journalist|whistleblower|scandal|corporation/.test(low)) inferredTags.push({ name: 'Investigative Journalism', rank: 88 });
       if (/rights|strike|miners|homeless|prison|justice/.test(low)) inferredTags.push({ name: 'Social Justice', rank: 88 });
       if (row.year >= 1970 && row.year < 1980) inferredTags.push({ name: '1970s Era', rank: 86 });
@@ -681,7 +696,10 @@
       const bakedUrls = (global.DOCFINDER_STREAMING_LINKS && global.DOCFINDER_STREAMING_LINKS[normKey]) || {};
       const rowPlatforms = Array.from(new Set([...(row.platforms || []), ...Object.keys(bakedUrls)])).filter(pid => Boolean(PLATFORM_BY_ID[pid]));
       const primaryPlat = rowPlatforms.length ? PLATFORM_BY_ID[rowPlatforms[0]] : null;
-      const posterUri = makeDocPosterDataUri(row.title, `IMDb ★ ${row.imdbRating} · ${row.year}`, primaryPlat?.color || '#0ea5e9', isTv ? 'DOCUSERIES' : 'FEATURE DOC');
+      const hasPoster = Boolean(row.poster && /^https?:\/\//i.test(row.poster));
+      const posterUri = hasPoster
+        ? row.poster
+        : makeDocPosterDataUri(row.title, `IMDb ★ ${row.imdbRating || '—'} · ${row.year}`, primaryPlat?.color || '#0ea5e9', isTv ? 'DOCUSERIES' : 'FEATURE DOC');
       const directors = row.director ? row.director.split(',').map(s => s.trim()).filter(Boolean) : [];
       const streamExtLinks = Object.entries(bakedUrls).map(([pid, directUrl]) => {
         const p = PLATFORM_BY_ID[pid];
@@ -689,19 +707,23 @@
         return { site: p.name, platformId: pid, url: directUrl, isDirect: !/search/i.test(directUrl), type: 'STREAMING' };
       }).filter(Boolean);
 
+      const extLinks = [];
+      if (realImdbId) extLinks.push({ site: 'IMDb', url: `https://www.imdb.com/title/${realImdbId}/`, type: 'INFO' });
+      extLinks.push(...streamExtLinks);
+
       const node = {
         id,
         idMal: id,
-        imdbId: row.imdbId,
+        imdbId: realImdbId,
         imdbRating: row.imdbRating,
         imdbVotes: row.imdbVotes,
         rottenTomatoes: row.rt || '',
         mpaaRated: row.rated || '',
-        _needsPosterHydration: true,
+        _needsPosterHydration: !hasPoster,
         countryOfOrigin: 'US',
         source: 'ARCHIVAL_FILM',
         docStyle,
-        title: { english: row.title, romaji: row.title, native: `IMDb ${row.imdbId}` },
+        title: { english: row.title, romaji: row.title, native: realImdbId ? `IMDb ${realImdbId}` : (row.network || 'Documentary') },
         coverImage: { large: posterUri, medium: posterUri, color: primaryPlat?.color || '#0ea5e9' },
         format: isMini ? 'MINI_SERIES' : (isTv ? 'DOCUSERIES' : 'FEATURE_DOC'),
         status: 'FINISHED',
@@ -709,21 +731,18 @@
         duration: row.runtime || (isTv ? 50 : 95),
         season: 'IMDB',
         seasonYear: row.year,
-        averageScore: Math.round((row.imdbRating || 7.8) * 10),
-        meanScore: Math.round((row.imdbRating || 7.8) * 10),
-        popularity: row.imdbVotes || 10000,
-        favourites: Math.round((row.imdbVotes || 10000) / 10),
+        averageScore: Math.round((row.imdbRating || 7.6) * 10),
+        meanScore: Math.round((row.imdbRating || 7.6) * 10),
+        popularity: row.imdbVotes || 5000,
+        favourites: Math.round((row.imdbVotes || 5000) / 10),
         genres: row.genres && row.genres.length ? row.genres : ['Society & Politics'],
         isAdult: false,
-        description: row.plot || `IMDb-verified ${isTv ? 'Documentary Series' : 'Documentary Feature Film'} (${row.year}) rated ★ ${row.imdbRating}/10 across ${Number(row.imdbVotes || 0).toLocaleString()} IMDb votes.`,
+        description: row.plot || `${realImdbId ? 'IMDb-verified ' : ''}${isTv ? 'Documentary Series' : 'Documentary Feature Film'} (${row.year}) rated ★ ${row.imdbRating || '—'}/10 across ${Number(row.imdbVotes || 0).toLocaleString()} votes.`,
         trailer: null,
-        studios: { nodes: [{ id: id + 1, name: primaryPlat ? primaryPlat.name : 'IMDb Documentary Index' }] },
+        studios: { nodes: [{ id: id + 1, name: row.network || (primaryPlat ? primaryPlat.name : 'IMDb Documentary Index') }] },
         tags: inferredTags,
-        externalLinks: [
-          { site: 'IMDb', url: `https://www.imdb.com/title/${row.imdbId}/`, type: 'INFO' },
-          ...streamExtLinks
-        ],
-        _verifiedStreaming: true,
+        externalLinks: extLinks,
+        _verifiedStreaming: rowPlatforms.length > 0,
         _matchedPlatforms: rowPlatforms,
         nextAiringEpisode: null,
         relations: { edges: [] },
@@ -734,6 +753,63 @@
             node: { id: id * 10 + dIdx, name: { full: dName } }
           }))
         }
+      };
+      CANONICAL_DOC_LIST.push(node);
+      byNormTitle.set(normKey, node);
+    }
+  }
+
+  // Merge PBS Flagship Documentary Films (pbs-catalog.js: FRONTLINE, Independent Lens, POV, American Experience, NOVA, Nature)
+  if (Array.isArray(global.DOCFINDER_PBS_CATALOG)) {
+    const byNormTitle = new Map(
+      CANONICAL_DOC_LIST.map(m => [String(m.title?.english || '').toLowerCase().replace(/[^a-z0-9]/g, ''), m])
+    );
+    for (const row of global.DOCFINDER_PBS_CATALOG) {
+      if (!row || !row.title) continue;
+      const normKey = String(row.title).toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (byNormTitle.has(normKey)) continue;
+      const id = allocateUniqueId(row.id || 400001);
+      const hasPoster = Boolean(row.poster && /^https?:\/\//i.test(row.poster));
+      const posterUri = hasPoster
+        ? row.poster
+        : makeDocPosterDataUri(row.title, `PBS ${row.strand} · ${row.year}`, '#2dd4bf', 'PBS DOC');
+      const node = {
+        id,
+        idMal: id,
+        imdbId: '',
+        imdbRating: null,
+        imdbVotes: null,
+        _needsPosterHydration: !hasPoster,
+        countryOfOrigin: 'US',
+        source: row.strand === 'NOVA' ? 'SCIENCE_ARCHIVE' : row.strand === 'Nature' ? 'NATURAL_HISTORY' : row.strand === 'FRONTLINE' ? 'JOURNALISM' : 'ARCHIVAL_FILM',
+        docStyle: row.style || 'Observational',
+        title: { english: row.title, romaji: row.title, native: `PBS ${row.strand}` },
+        coverImage: { large: posterUri, medium: posterUri, color: '#2dd4bf' },
+        format: 'FEATURE_DOC',
+        status: 'FINISHED',
+        episodes: 1,
+        duration: row.runtime || 56,
+        season: 'PBS',
+        seasonYear: row.year || 2022,
+        averageScore: 84,
+        meanScore: 84,
+        popularity: 28000,
+        favourites: 2400,
+        genres: [row.genre || 'Society & Politics'],
+        isAdult: false,
+        description: row.plot || `PBS ${row.strand} documentary presentation (${row.year || ''}).`,
+        trailer: null,
+        studios: { nodes: [{ id: id + 1, name: `PBS (${row.strand})` }] },
+        tags: [
+          { name: row.strand === 'FRONTLINE' ? 'Investigative Journalism' : row.strand === 'NOVA' ? 'Space Exploration' : row.strand === 'Nature' ? 'Deep Ocean & Wildlife' : row.strand === 'American Experience' ? 'Archival Footage' : 'Cinema Verité', rank: 90 }
+        ],
+        externalLinks: row.pbsUrl ? [{ site: 'PBS / Kanopy', platformId: 'pbs', url: row.pbsUrl, isDirect: false, type: 'STREAMING' }] : [],
+        _verifiedStreaming: true,
+        _matchedPlatforms: ['pbs'],
+        nextAiringEpisode: null,
+        relations: { edges: [] },
+        characters: { edges: [] },
+        staff: { edges: [] }
       };
       CANONICAL_DOC_LIST.push(node);
       byNormTitle.set(normKey, node);
@@ -2861,20 +2937,39 @@
     return found;
   }
 
+  // Polite rate-limited poster hydration queue (max 2 concurrent, 350ms spacing, IndexedDB cached)
+  const posterQueue = [];
+  let posterActive = 0;
+  function enqueuePosterHydration(fn) {
+    posterQueue.push(fn);
+    pumpPosterQueue();
+  }
+  function pumpPosterQueue() {
+    while (posterActive < 2 && posterQueue.length) {
+      const task = posterQueue.shift();
+      posterActive++;
+      Promise.resolve().then(task).finally(() => {
+        setTimeout(() => { posterActive--; pumpPosterQueue(); }, 350);
+      });
+    }
+  }
+
   function hydrateCardPosters(container, itemsById) {
     if (!container || !itemsById) return;
     const cards = Array.from(container.querySelectorAll('.anime-card[data-anime-id], .anime-card[data-id]'));
     if (!cards.length) return;
 
-    const hydrateOne = async (card) => {
+    const hydrateOne = (card) => {
       const id = Number(card.dataset.animeId || card.dataset.id);
       const m = itemsById.get(id);
       if (!m || !m._needsPosterHydration) return;
-      const url = await resolveImdbPosterUrl(m);
-      if (url) {
-        const img = card.querySelector('img.anime-card-cover');
-        if (img) img.src = url;
-      }
+      enqueuePosterHydration(async () => {
+        const url = await resolveImdbPosterUrl(m);
+        if (url) {
+          const img = card.querySelector('img.anime-card-cover');
+          if (img) img.src = url;
+        }
+      });
     };
 
     if (typeof IntersectionObserver !== 'undefined') {
@@ -2885,13 +2980,13 @@
             hydrateOne(entry.target);
           }
         });
-      }, { rootMargin: '250px' });
+      }, { rootMargin: '150px' });
       cards.forEach(c => {
         const id = Number(c.dataset.animeId || c.dataset.id);
         if (itemsById.get(id)?._needsPosterHydration) obs.observe(c);
       });
     } else {
-      cards.slice(0, 16).forEach(hydrateOne);
+      cards.slice(0, 12).forEach(hydrateOne);
     }
   }
 

@@ -1,0 +1,3 @@
+.cache_imdb/
+__pycache__/
+*.pyc

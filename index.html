@@ -78,6 +78,9 @@
       </div>
       <div id="releasesMeta" style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;"></div>
       <div id="releasesGrid" class="anime-grid"></div>
+      <div id="releasesPager" style="display:flex;justify-content:center;gap:10px;margin-top:18px;" hidden>
+        <button type="button" class="btn btn-primary" id="releasesLoadMoreBtn">Load 48 More</button>
+      </div>
     </section>
 
     <!-- TAB 2: 7-DAY DOCUMENTARY SCHEDULE -->
@@ -339,11 +342,15 @@
 
       <div id="archivesMeta" style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;"></div>
       <div id="archivesGrid" class="anime-grid"></div>
+      <div id="archivesPager" style="display:flex;justify-content:center;gap:10px;margin-top:18px;" hidden>
+        <button type="button" class="btn btn-primary" id="archivesLoadMoreBtn">Load 48 More</button>
+      </div>
     </section>
   </main>
 
   <script src="./catalog-data.js"></script>
   <script src="./imdb-catalog.js"></script>
+  <script src="./pbs-catalog.js"></script>
   <script src="./streaming-links.js"></script>
   <script src="./shared-core.js"></script>
   <script>
@@ -607,12 +614,19 @@
         }
       }
 
-      function renderReleasesGrid() {
+      let releasesFiltered = [];
+      let releasesLimit = 48;
+      const PAGE_SIZE = 48;
+
+      function renderReleasesGrid(resetLimit = true) {
+        if (resetLimit) releasesLimit = PAGE_SIZE;
         const grid = document.getElementById('releasesGrid');
         const meta = document.getElementById('releasesMeta');
+        const pager = document.getElementById('releasesPager');
+        const loadMoreBtn = document.getElementById('releasesLoadMoreBtn');
         const usOnly = document.getElementById('releasesUsOnly')?.checked;
 
-        const filtered = releasesCache.filter(m => {
+        releasesFiltered = releasesCache.filter(m => {
           if (usOnly && m.countryOfOrigin && m.countryOfOrigin !== 'US') return false;
           const extra = tmdbExtraByAnimeId.get(m.id) || [];
           if (!AF.matchesStreamingFilter(m, extra)) return false;
@@ -629,15 +643,17 @@
         });
 
         const sfSummary = AF.getStreamingFilterSummary();
-        meta.textContent = `Showing ${filtered.length} documentaries (${sfSummary || 'All Streaming Platforms'}${usOnly ? ' · US Docs only' : ''})`;
+        const shown = releasesFiltered.slice(0, releasesLimit);
+        meta.textContent = `Showing ${shown.length.toLocaleString()} of ${releasesFiltered.length.toLocaleString()} documentaries (${sfSummary || 'All Streaming Platforms'}${usOnly ? ' · US Docs only' : ''})`;
 
-        if (!filtered.length) {
+        if (!releasesFiltered.length) {
+          pager.hidden = true;
           grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">No documentary series or films matched your active filters. Try clearing a streaming service or widening the format/subject filter.</div>`;
           return;
         }
 
-        const byId = new Map(filtered.map(m => [m.id, m]));
-        grid.innerHTML = filtered.map(m => {
+        const byId = new Map(shown.map(m => [m.id, m]));
+        grid.innerHTML = shown.map(m => {
           const fmtLbl = m.format === 'FEATURE_DOC' ? 'FEATURE FILM' : m.format === 'MINI_SERIES' ? 'MINI-SERIES' : 'DOCUSERIES';
           const airingBadge = m.status === 'RELEASING'
             ? `<span class="badge badge-rose">ONGOING SERIES</span>`
@@ -646,7 +662,17 @@
         }).join('');
 
         attachCardHandlers(grid, byId);
+        const remaining = releasesFiltered.length - shown.length;
+        pager.hidden = remaining <= 0;
+        if (remaining > 0) {
+          loadMoreBtn.textContent = `Load ${Math.min(PAGE_SIZE, remaining)} More (${remaining.toLocaleString()} remaining)`;
+        }
       }
+
+      document.getElementById('releasesLoadMoreBtn').addEventListener('click', () => {
+        releasesLimit += PAGE_SIZE;
+        renderReleasesGrid(false);
+      });
 
       document.getElementById('styleFilterSelect').addEventListener('change', (ev) => { activeStyleFilter = ev.target.value; renderReleasesGrid(); });
       document.getElementById('genreFilterSelect').addEventListener('change', (ev) => { activeGenreFilter = ev.target.value; renderReleasesGrid(); });
@@ -1169,12 +1195,36 @@
       document.getElementById('searchStudioBtn').addEventListener('click', () => { const q = document.getElementById('studioSearchInput').value.trim(); if (q) loadStudioArchive(q); });
       document.getElementById('studioSearchInput').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { const q = ev.target.value.trim(); if (q) loadStudioArchive(q); } });
 
+      let archivesList = [];
+      let archivesLimit = 48;
+      let archivesLabelPrefix = '';
+
+      function renderArchivesSlice(resetLimit = true) {
+        if (resetLimit) archivesLimit = PAGE_SIZE;
+        const grid = document.getElementById('archivesGrid');
+        const meta = document.getElementById('archivesMeta');
+        const pager = document.getElementById('archivesPager');
+        const btn = document.getElementById('archivesLoadMoreBtn');
+        const shown = archivesList.slice(0, archivesLimit);
+        meta.textContent = `${archivesLabelPrefix} — showing ${shown.length.toLocaleString()} of ${archivesList.length.toLocaleString()} documentaries`;
+        const byId = new Map(shown.map(m => [m.id, m]));
+        grid.innerHTML = shown.length ? shown.map(m => renderDocCard(m)).join('') : `<div class="empty-state" style="grid-column:1/-1;">No documentaries matched this archive view.</div>`;
+        attachCardHandlers(grid, byId);
+        const remaining = archivesList.length - shown.length;
+        pager.hidden = remaining <= 0;
+        if (remaining > 0) btn.textContent = `Load ${Math.min(PAGE_SIZE, remaining)} More (${remaining.toLocaleString()} remaining)`;
+      }
+
+      document.getElementById('archivesLoadMoreBtn').addEventListener('click', () => {
+        archivesLimit += PAGE_SIZE;
+        renderArchivesSlice(false);
+      });
+
       async function loadYearArchive() {
         const year = Number(document.getElementById('archiveYearSelect').value) || 2020;
         const format = document.getElementById('archiveFormatSelect').value;
         const sort = document.getElementById('archiveSortSelect').value;
         const grid = document.getElementById('archivesGrid');
-        const meta = document.getElementById('archivesMeta');
 
         const startYr = activeArchiveDecade || year;
         const endYr = activeArchiveDecade ? Math.min(2026, activeArchiveDecade + 9) : year;
@@ -1205,10 +1255,9 @@
         if (entryOnly) list = list.filter(m => !AF.isSequelOrRecap(m));
         list.sort((a, b) => sort === 'POPULARITY_DESC' ? (b.popularity || 0) - (a.popularity || 0) : (b.averageScore || 0) - (a.averageScore || 0));
 
-        meta.textContent = `Archive: ${rangeLabel}${format ? ' · ' + format : ''}${entryOnly ? ' · Standalone Only' : ''} — ${list.length} documentaries`;
-        const byId = new Map(list.map(m => [m.id, m]));
-        grid.innerHTML = list.length ? list.map(m => renderDocCard(m)).join('') : `<div class="empty-state" style="grid-column:1/-1;">No documentaries indexed for ${rangeLabel}.</div>`;
-        attachCardHandlers(grid, byId);
+        archivesList = list;
+        archivesLabelPrefix = `Archive: ${rangeLabel}${format ? ' · ' + format : ''}${entryOnly ? ' · Standalone Only' : ''}`;
+        renderArchivesSlice(true);
       }
 
       async function loadStudioArchive(studioName) {
@@ -1220,6 +1269,7 @@
           const studio = data?.Studio;
           if (!studio) {
             meta.textContent = '';
+            document.getElementById('archivesPager').hidden = true;
             grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Network or studio "${AF.escapeHtml(studioName)}" not found.</div>`;
             return;
           }
@@ -1227,10 +1277,9 @@
           const entryOnly = document.getElementById('archiveEntryPointsOnly')?.checked;
           if (entryOnly) mainList = mainList.filter(m => !AF.isSequelOrRecap(m));
 
-          meta.textContent = `Network / Studio: ${studio.name} — ${mainList.length} documentaries`;
-          const byId = new Map(mainList.map(m => [m.id, m]));
-          grid.innerHTML = mainList.length ? mainList.map(m => renderDocCard(m)).join('') : `<div class="empty-state" style="grid-column:1/-1;">No documentaries found for ${AF.escapeHtml(studio.name)}.</div>`;
-          attachCardHandlers(grid, byId);
+          archivesList = mainList;
+          archivesLabelPrefix = `Network / Studio: ${studio.name}`;
+          renderArchivesSlice(true);
         } catch (err) {
           grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Studio query failed: ${AF.escapeHtml(err.message)}</div>`;
         }
